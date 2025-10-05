@@ -45,6 +45,19 @@
         .score-pop {
             animation: pop 0.3s ease-in-out;
         }
+        /* Hint animation */
+        @keyframes vibrate {
+            0% { transform: translate(0); }
+            20% { transform: translate(-2px, 2px); }
+            40% { transform: translate(-2px, -2px); }
+            60% { transform: translate(2px, 2px); }
+            80% { transform: translate(2px, -2px); }
+            100% { transform: translate(0); }
+        }
+        .vibrate-hint {
+            animation: vibrate 0.5s ease-in-out 2; /* Vibrate for 1 second */
+            border: 2px solid #ef4444; /* red-500 */
+        }
     </style>
 </head>
 <body class="bg-amber-50 antialiased text-gray-800">
@@ -178,6 +191,7 @@
             // --- Sound Effects ---
             let soundsReady = false;
             let correctSound, wrongSound, winSound;
+            let hintTimer = null; // Timer for the hint system
 
             function setupSounds() {
                 correctSound = new Tone.Synth({
@@ -340,6 +354,11 @@
                     });
                 }
                 
+                clearTimeout(hintTimer);
+                if (gameState.difficulty === 'difficult') {
+                    startHintTimer();
+                }
+
                 renderElevator();
                 changeFloor('G/F');
                 updateCart();
@@ -351,10 +370,9 @@
                 floors.forEach(floorKey => {
                     const floorData = storeData[floorKey];
                     const button = document.createElement('button');
-                    // Changed padding and removed overall text-lg to allow for two lines with different sizes
                     button.className = `elevator-button w-full text-center p-2 rounded-lg font-semibold transition-colors duration-200 bg-gray-200 hover:bg-amber-400`;
+                    button.dataset.floor = floorKey;
                     
-                    // Using innerHTML to structure the button content with floor and category name
                     button.innerHTML = `
                         <span class="block text-lg">${floorKey}</span>
                         <span class="block text-sm">${floorData.hypernym}</span>
@@ -381,26 +399,21 @@
                 if (gameState.difficulty === 'difficult' && gameState.misplacedItemsOnFloors[floorKey]) {
                     const wrongItem = gameState.misplacedItemsOnFloors[floorKey];
                     
-                    // Find items on this floor that are NOT on the shopping list
                     const replaceableItems = itemsToDisplay.filter(item => !gameState.shoppingList.includes(item.name));
 
                     if (replaceableItems.length > 0) {
-                        // Pick a random non-shopping-list item to replace
                         const itemToReplace = replaceableItems[Math.floor(Math.random() * replaceableItems.length)];
                         const indexToReplace = itemsToDisplay.findIndex(item => item.name === itemToReplace.name);
                         
-                        // Replace it with the misplaced item
                         if (indexToReplace !== -1) {
                             itemsToDisplay[indexToReplace] = wrongItem;
                         }
                     } else {
-                        // Fallback for the rare edge case where all items on a floor are on the shopping list
                         const randomIndex = Math.floor(Math.random() * itemsToDisplay.length);
                         itemsToDisplay[randomIndex] = wrongItem;
                     }
                 }
 
-                // Shuffle items for variety
                 itemsToDisplay.sort(() => Math.random() - 0.5);
 
                 departmentFloor.innerHTML = `
@@ -411,7 +424,7 @@
                 `;
 
                 const shelvesContainer = document.getElementById('shelves');
-                const itemsPerShelf = window.innerWidth < 768 ? 3 : 5; // Fewer items per shelf on mobile
+                const itemsPerShelf = window.innerWidth < 768 ? 3 : 5; 
                 let shelfCount = 0;
 
                 for (let i = 0; i < itemsToDisplay.length; i += itemsPerShelf) {
@@ -435,15 +448,11 @@
                         let iconHTML;
 
                         if (isImagePath) {
-                            // The image will be contained within the parent div. max-w/h and object-contain are key.
                             iconHTML = `<img src="${item.icon}" alt="${item.name}" class="max-w-full max-h-full object-contain">`;
                         } else {
-                            // Emoji size is controlled by font-size.
                             iconHTML = `<span class="text-5xl sm:text-6xl">${item.icon}</span>`;
                         }
                         
-                        // KEY CHANGE: The container now has a fixed but responsive width and height (w-24, h-24).
-                        // This forces every icon box to be the same size. 'mx-auto' centers it within the grid cell.
                         const iconContainerHTML = `
                             <div class="bg-gray-100 rounded-md flex items-center justify-center aspect-square w-24 h-24 mx-auto p-2">
                                 ${iconHTML}
@@ -469,7 +478,7 @@
             }
             
             function handleItemClick(itemName, cardElement) {
-                if (cardElement.classList.contains('selected')) return; // Already collected
+                if (cardElement.classList.contains('selected')) return; 
 
                 const isOnShoppingList = gameState.shoppingList.includes(itemName);
                 const isMisplaced = gameState.difficulty === 'difficult' && Object.values(gameState.misplacedItemsOnFloors).some(itemObj => itemObj.name === itemName);
@@ -482,7 +491,6 @@
                         playCorrectSound();
                         cardElement.classList.add('selected');
                     } else {
-                        // Optional: give feedback for clicking wrong item
                         playWrongSound();
                     }
                 } else { // Difficult mode
@@ -493,12 +501,13 @@
                         cardElement.classList.add('selected');
                     } else if (isMisplaced && !isCorrectOnThisFloor) {
                         gameState.wrongItemsFound.push(itemName);
-                        updateScore(15); // More points for finding wrong items
+                        updateScore(15);
                         playCorrectSound();
                         cardElement.classList.add('selected');
                         showStaffApology();
+                        startHintTimer(); // Reset hint timer after finding a mistake
                     } else {
-                         updateScore(-5); // Penalty
+                         updateScore(-5); 
                          playWrongSound();
                     }
                 }
@@ -511,10 +520,8 @@
                 const listOwner = relatives[gameState.currentRound - 1];
                 const ownerIcon = relativeIcons[listOwner];
 
-                // Update shopping list display with checkmarks
                 listOwnerEl.innerHTML = `<span class="text-2xl">${ownerIcon}</span> ${listOwner} 的清單： <span class="font-normal">${gameState.shoppingList.map(item => `<span class="${gameState.itemsInCart.includes(item) ? 'text-green-500 line-through' : ''}">${item}</span>`).join('、')}</span>`;
                 
-                // Update cart items
                 if (gameState.itemsInCart.length === 0) {
                     shoppingCartEl.innerHTML = '<p class="text-gray-500 text-center italic">購物車是空的</p>';
                 } else {
@@ -528,7 +535,6 @@
                     }).join('');
                 }
 
-                // Update wrong items found
                 if (gameState.difficulty === 'difficult') {
                     if (gameState.wrongItemsFound.length === 0) {
                         wrongItemsCartEl.innerHTML = '<p class="text-gray-500 text-center italic">還未找到</p>';
@@ -565,16 +571,16 @@
                     }
                 } else { // Difficult
                     const allShoppingItemsFound = gameState.shoppingList.every(item => gameState.itemsInCart.includes(item));
-                    const allMisplacedItemsFound = Object.values(gameState.misplacedItemsOnFloors).every(item => gameState.wrongItemsFound.includes(item));
+                    const allMisplacedItemsFound = Object.values(gameState.misplacedItemsOnFloors).every(item => gameState.wrongItemsFound.includes(item.name));
                     if (allShoppingItemsFound && allMisplacedItemsFound) {
                         roundComplete = true;
                     }
                 }
                 
                 if (roundComplete) {
+                    clearTimeout(hintTimer);
                     playWinSound();
-                    updateScore(20); // Bonus for completing a round
-                    // Add a slight delay to ensure the staff apology modal has time to disappear if it was the last item
+                    updateScore(20);
                     setTimeout(() => {
                         showSuccessModal();
                     }, 500);
@@ -596,7 +602,7 @@
                 staffApologyModal.classList.remove('hidden');
                 setTimeout(() => {
                     staffApologyModal.classList.add('hidden');
-                }, 1500); // The modal will disappear after 1.5 seconds
+                }, 1500);
             }
             
             function nextRound() {
@@ -616,28 +622,64 @@
             }
 
             function resetGame() {
+                clearTimeout(hintTimer);
                 endScreen.classList.add('hidden');
                 startScreen.classList.remove('hidden');
             }
             
+            function startHintTimer() {
+                clearTimeout(hintTimer); // Clear any existing timer
+                
+                const misplacedItemObjects = Object.values(gameState.misplacedItemsOnFloors);
+                const unfoundMisplacedItems = misplacedItemObjects.filter(item => !gameState.wrongItemsFound.includes(item.name));
+
+                if (unfoundMisplacedItems.length > 0) {
+                    hintTimer = setTimeout(showHint, 45000);
+                }
+            }
+
+            function showHint() {
+                const unfoundFloors = Object.keys(gameState.misplacedItemsOnFloors).filter(floorKey => {
+                    const misplacedItemName = gameState.misplacedItemsOnFloors[floorKey].name;
+                    return !gameState.wrongItemsFound.includes(misplacedItemName);
+                });
+
+                if (unfoundFloors.length > 0) {
+                    const hintFloor = unfoundFloors[0];
+                    const hintButton = elevatorButtonsContainer.querySelector(`[data-floor="${hintFloor}"]`);
+                    if (hintButton) {
+                        hintButton.classList.add('vibrate-hint');
+                        setTimeout(() => {
+                            hintButton.classList.remove('vibrate-hint');
+                        }, 1500);
+                    }
+                }
+            }
+
             // --- Event Listeners ---
             startEasyBtn.addEventListener('click', () => startGame('easy'));
             startDifficultBtn.addEventListener('click', () => startGame('difficult'));
             restartGameBtn.addEventListener('click', resetGame);
             nextRoundBtn.addEventListener('click', nextRound);
             
+            let lastRenderedWidth = window.innerWidth;
+
              // Responsive layout adjustment
             window.addEventListener('resize', () => {
                 if (!mainGame.classList.contains('hidden')) {
-                    renderFloor(gameState.activeFloor);
+                    const currentWidth = window.innerWidth;
+                    const breakpoint = 768;
+                    const crossedBreakpoint = (lastRenderedWidth < breakpoint && currentWidth >= breakpoint) || (lastRenderedWidth >= breakpoint && currentWidth < breakpoint);
+                    
+                    if (crossedBreakpoint) {
+                        renderFloor(gameState.activeFloor);
+                    }
+                    
+                    lastRenderedWidth = currentWidth; 
                 }
             });
         });
     </script>
 </body>
 </html>
-
-
-
-
 

@@ -191,7 +191,6 @@
             // --- Sound Effects ---
             let soundsReady = false;
             let correctSound, wrongSound, winSound;
-            let hintTimer = null; // Timer for the hint system
 
             function setupSounds() {
                 correctSound = new Tone.Synth({
@@ -291,7 +290,8 @@
                 shoppingList: [],
                 itemsInCart: [],
                 wrongItemsFound: [],
-                misplacedItemsOnFloors: {}
+                misplacedItemsOnFloors: {},
+                wrongPresses: 0
             };
 
             // --- Functions ---
@@ -325,6 +325,7 @@
                 gameState.itemsInCart = [];
                 gameState.wrongItemsFound = [];
                 gameState.misplacedItemsOnFloors = {};
+                gameState.wrongPresses = 0;
 
                 // Generate shopping list
                 const listOwner = relatives[gameState.currentRound - 1];
@@ -352,11 +353,6 @@
                         const wrongItem = otherItems[Math.floor(Math.random() * otherItems.length)];
                         gameState.misplacedItemsOnFloors[floorKey] = wrongItem;
                     });
-                }
-                
-                clearTimeout(hintTimer);
-                if (gameState.difficulty === 'difficult') {
-                    startHintTimer();
                 }
 
                 renderElevator();
@@ -505,10 +501,15 @@
                         playCorrectSound();
                         cardElement.classList.add('selected');
                         showStaffApology();
-                        startHintTimer(); // Reset hint timer after finding a mistake
+                        gameState.wrongPresses = 0; // Reset hint counter on correct find
                     } else {
                          updateScore(-5); 
                          playWrongSound();
+                         gameState.wrongPresses++;
+                         if (gameState.wrongPresses >= 3) {
+                             showHint();
+                             gameState.wrongPresses = 0; // Reset after showing hint
+                         }
                     }
                 }
 
@@ -578,7 +579,6 @@
                 }
                 
                 if (roundComplete) {
-                    clearTimeout(hintTimer);
                     playWinSound();
                     updateScore(20);
                     setTimeout(() => {
@@ -622,20 +622,8 @@
             }
 
             function resetGame() {
-                clearTimeout(hintTimer);
                 endScreen.classList.add('hidden');
                 startScreen.classList.remove('hidden');
-            }
-            
-            function startHintTimer() {
-                clearTimeout(hintTimer); // Clear any existing timer
-                
-                const misplacedItemObjects = Object.values(gameState.misplacedItemsOnFloors);
-                const unfoundMisplacedItems = misplacedItemObjects.filter(item => !gameState.wrongItemsFound.includes(item.name));
-
-                if (unfoundMisplacedItems.length > 0) {
-                    hintTimer = setTimeout(showHint, 45000);
-                }
             }
 
             function showHint() {

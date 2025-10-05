@@ -1,0 +1,643 @@
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>百貨公司尋寶遊戲</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            touch-action: manipulation; /* Prevents double-tap zoom on mobile */
+        }
+        .item-card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .item-card:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .item-card.selected {
+            transform: scale(0.9);
+            border-color: #4ade80; /* green-400 */
+            opacity: 0.5;
+        }
+        .elevator-button.active {
+            background-color: #f59e0b; /* amber-500 */
+            color: white;
+            font-weight: bold;
+        }
+        .shelf {
+            background-image: url('https://placehold.co/100x20/deb887/deb887?text=shelf');
+            background-repeat: repeat-x;
+            background-size: contain;
+            border-bottom: 5px solid #A0522D;
+        }
+        .hidden {
+            display: none;
+        }
+        /* Custom animation for score feedback */
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+        .score-pop {
+            animation: pop 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-amber-50 antialiased text-gray-800">
+
+    <div id="game-container" class="max-w-7xl mx-auto p-2 sm:p-4 min-h-screen flex flex-col">
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="flex flex-col items-center justify-center text-center h-full flex-grow">
+            <h1 class="text-4xl sm:text-6xl font-bold text-amber-600 mb-4">百貨公司尋寶遊戲</h1>
+            <p class="text-lg sm:text-xl text-gray-600 mb-8">選擇難度開始遊戲！</p>
+            <div class="space-y-4">
+                <button id="start-easy" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg text-xl shadow-lg transition-transform transform hover:scale-105">簡單模式</button>
+                <button id="start-difficult" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-lg text-xl shadow-lg transition-transform transform hover:scale-105">困難模式</button>
+            </div>
+             <div class="mt-8 p-4 bg-white rounded-lg shadow-md text-left max-w-md">
+                <h2 class="font-bold text-lg mb-2 text-amber-700">遊戲玩法：</h2>
+                <p><span class="font-bold text-green-600">簡單模式：</span>根據購物清單，到不同樓層把貨品放入購物車。</p>
+                <p><span class="font-bold text-red-600">困難模式：</span>除了完成購物清單，還要找出每層樓放錯了的貨品！</p>
+            </div>
+        </div>
+
+        <!-- Main Game Screen -->
+        <div id="main-game" class="hidden flex-grow flex-col">
+            <!-- Header -->
+            <header class="bg-white rounded-lg shadow-md p-2 sm:p-4 mb-4">
+                <div class="flex flex-col sm:flex-row justify-between items-center">
+                    <div id="shopping-list-container" class="mb-2 sm:mb-0">
+                        <h2 class="text-xl sm:text-2xl font-bold text-amber-700">購物清單</h2>
+                        <p id="list-owner" class="text-gray-600"></p>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="text-center">
+                            <span class="text-lg font-bold text-blue-600">分數</span>
+                            <div id="score" class="text-3xl font-bold bg-blue-100 text-blue-800 px-4 py-1 rounded-lg">0</div>
+                        </div>
+                        <div class="text-center">
+                            <span class="text-lg font-bold text-purple-600">回合</span>
+                            <div id="round" class="text-3xl font-bold bg-purple-100 text-purple-800 px-4 py-1 rounded-lg">1 / 8</div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Game Area -->
+            <div class="flex-grow flex flex-col md:flex-row gap-4">
+                <!-- Elevator Panel -->
+                <aside class="w-full md:w-48 bg-white rounded-lg shadow-md p-4 flex md:flex-col justify-start items-center gap-2">
+                    <h3 class="hidden md:block text-xl font-bold mb-4 text-center text-gray-700">電梯</h3>
+                    <div id="elevator-buttons" class="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-1 w-full gap-2">
+                        <!-- Buttons will be generated by JS -->
+                    </div>
+                </aside>
+
+                <!-- Department Store -->
+                <main class="flex-grow bg-white rounded-lg shadow-md p-4">
+                    <div id="department-floor" class="h-full">
+                        <!-- Floor content will be generated by JS -->
+                    </div>
+                </main>
+
+                <!-- Shopping Cart -->
+                 <aside class="w-full md:w-64 bg-white rounded-lg shadow-md p-4">
+                    <h3 class="text-xl font-bold mb-4 text-center text-green-700">
+                        <span class="align-middle">🛒 購物車</span>
+                    </h3>
+                    <div id="shopping-cart" class="space-y-2 h-64 md:h-auto overflow-y-auto bg-gray-50 p-2 rounded-lg">
+                        <p class="text-gray-500 text-center italic">購物車是空的</p>
+                    </div>
+                    <div id="wrong-items-section" class="mt-4 hidden">
+                        <h3 class="text-xl font-bold mb-2 text-center text-red-700">🧐 找出的錯處</h3>
+                        <div id="wrong-items-cart" class="space-y-2 h-32 md:h-auto overflow-y-auto bg-gray-50 p-2 rounded-lg">
+                           <p class="text-gray-500 text-center italic">還未找到</p>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+
+        </div>
+
+        <!-- End Screen -->
+        <div id="end-screen" class="hidden flex-col items-center justify-center text-center h-full flex-grow">
+            <h1 class="text-5xl font-bold text-amber-600 mb-4">遊戲結束！</h1>
+            <p class="text-2xl text-gray-700 mb-4">你的最終分數是：</p>
+            <div id="final-score" class="text-7xl font-bold text-blue-600 mb-8"></div>
+            <button id="restart-game" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-lg text-xl shadow-lg transition-transform transform hover:scale-105">重新開始</button>
+        </div>
+
+        <!-- Success Modal -->
+        <div id="success-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white p-8 rounded-lg shadow-2xl text-center transform transition-all scale-95">
+                <div id="success-animation" class="text-8xl mb-4">🎉</div>
+                <h2 id="success-message" class="text-3xl font-bold text-green-600">做得好！</h2>
+                <button id="next-round-btn" class="mt-6 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg text-lg">下一回合</button>
+            </div>
+        </div>
+
+        <!-- Staff Apology Modal -->
+        <div id="staff-apology-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white p-8 rounded-lg shadow-2xl text-center transform transition-all animate-pop-in">
+                <div class="text-8xl mb-4">🧑‍💼</div>
+                <h2 class="text-3xl font-bold text-amber-700">不好意思，放錯了！</h2>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const TONE_VOLUME = -10; // set volume to -10 decibels for softer sounds
+            // --- DOM Elements ---
+            const startScreen = document.getElementById('start-screen');
+            const mainGame = document.getElementById('main-game');
+            const endScreen = document.getElementById('end-screen');
+            const startEasyBtn = document.getElementById('start-easy');
+            const startDifficultBtn = document.getElementById('start-difficult');
+            const restartGameBtn = document.getElementById('restart-game');
+            const scoreEl = document.getElementById('score');
+            const roundEl = document.getElementById('round');
+            const listOwnerEl = document.getElementById('list-owner');
+            const elevatorButtonsContainer = document.getElementById('elevator-buttons');
+            const departmentFloor = document.getElementById('department-floor');
+            const shoppingCartEl = document.getElementById('shopping-cart');
+            const wrongItemsSection = document.getElementById('wrong-items-section');
+            const wrongItemsCartEl = document.getElementById('wrong-items-cart');
+            const successModal = document.getElementById('success-modal');
+            const successMessageEl = document.getElementById('success-message');
+            const nextRoundBtn = document.getElementById('next-round-btn');
+            const finalScoreEl = document.getElementById('final-score');
+            const staffApologyModal = document.getElementById('staff-apology-modal');
+
+            // --- Sound Effects ---
+            let soundsReady = false;
+            let correctSound, wrongSound, winSound;
+
+            function setupSounds() {
+                correctSound = new Tone.Synth({
+                    oscillator: { type: "sine" },
+                    envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 },
+                    volume: TONE_VOLUME
+                }).toDestination();
+
+                wrongSound = new Tone.Synth({
+                    oscillator: { type: "square" },
+                    envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.5 },
+                    volume: TONE_VOLUME
+                }).toDestination();
+                
+                winSound = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: 'triangle' },
+                    envelope: { attack: 0.005, decay: 0.1, sustain: 0.2, release: 0.1 },
+                    volume: TONE_VOLUME
+                }).toDestination();
+                
+                soundsReady = true;
+            }
+
+            function playCorrectSound() {
+                if (!soundsReady) return;
+                correctSound.triggerAttackRelease("C5", "8n");
+            }
+            
+            function playWrongSound() {
+                if(!soundsReady) return;
+                wrongSound.triggerAttackRelease("C3", "8n", Tone.now());
+            }
+
+            function playWinSound() {
+                if (!soundsReady) return;
+                const now = Tone.now();
+                winSound.triggerAttackRelease(["C5", "E5", "G5"], "8n", now);
+                winSound.triggerAttackRelease(["G5", "C6"], "8n", now + 0.2);
+            }
+
+            // --- Game Data ---
+            const storeData = {
+                '5/F': { hypernym: '電器', items: [
+                    { name: '雪櫃', icon: 'images/fridge.png' }, { name: '微波爐', icon: 'images/microwave.png' }, { name: '電飯煲', icon: 'images/ricecooker.png' }, { name: '電磁爐', icon: 'images/inductioncooker.png' }, 
+                    { name: '抽油煙機', icon: 'images/kitchenhood.png' }, { name: '攪拌機', icon: 'images/blender.png' }, { name: '洗衣機', icon: 'images/washingmachine.png' }, { name: '吸塵機', icon: 'images/vacuum.png' }, 
+                    { name: '冷氣機', icon: 'images/ac.png' }, { name: '風扇', icon: 'images/fan.png' }, { name: '電視機', icon: 'images/tv.png' }, { name: '電腦', icon: 'images/computer.png' }, 
+                    { name: '平板電腦', icon: 'images/ipad.png' }, { name: '暖爐', icon: 'images/heater.png' }, { name: '熨斗', icon: 'images/iron.png' }, { name: '風筒', icon: 'images/hairdryer.png' }
+                ]},
+                '4/F': { hypernym: '文具', items: [
+                    { name: '原子筆', icon: 'images/pen.png' }, { name: '鉛筆', icon: 'images/pencil.png' }, { name: '螢光筆', icon: 'images/highlighter.png' }, { name: '間尺', icon: '📏' }, 
+                    { name: '圓規', icon: 'images/compass.png' }, { name: '剪刀', icon: 'images/scissors.png' }, { name: '紙', icon: 'images/paper.png' }, { name: '釘書機', icon: 'images/stapler.png' }, 
+                    { name: '萬字夾', icon: 'images/paperclip.png' }, { name: '文件夾', icon: 'images/files.png' }, { name: '漿糊筆', icon: 'images/gluestick.png' }, { name: '膠紙', icon: 'images/cellotape.png' }, 
+                    { name: '塗改液', icon: 'images/tippex.png' }, { name: '便條紙', icon: 'images/memo.png' }, { name: '計數機', icon: 'images/calculator.png' }, { name: '顏色筆', icon: 'images/colourpencil.png' }
+                ]},
+                '3/F': { hypernym: '家居用品', items: [
+                    { name: '掃把', icon: 'images/broom.png' }, { name: '洗潔精', icon: 'images/soap.png' }, { name: '刀叉', icon: '🍴' }, 
+                    { name: '保鮮盒', icon: 'images/tupperware.png' }, { name: '枕頭', icon: 'images/pillow.png' }, { name: '棉被', icon: 'images/futon.png' }, 
+                    { name: '衣架', icon: 'images/hanger.png' }, { name: '窗簾', icon: 'images/curtain.png' }, { name: '地氈', icon: 'images/carpet.png' }
+                ]},
+                '2/F': { hypernym: '服飾', items: [
+                    { name: 'T裇', icon: '👕' }, { name: '裇衫', icon: '👔' }, { name: '牛仔褲', icon: '👖' }, { name: '裙', icon: '👗' }, 
+                    { name: '外套', icon: '🧥' }, { name: '襪', icon: '🧦' }, { name: '帽', icon: '🧢' }, { name: '波鞋', icon: '👟' }, 
+                    { name: '手袋', icon: '👜' }, { name: '頸巾', icon: '🧣' }, { name: '人字拖', icon: '🩴' }, { name: '靴', icon: '👢' }
+                ]},
+                '1/F': { hypernym: '傢俬', items: [
+                    { name: '床', icon: 'images/bed.png' }, { name: '梳化', icon: 'images/sofa.png' }, { name: '食飯枱', icon: 'images/table.png' }, { name: '椅子', icon: 'images/chair.png' }, 
+                    { name: '書櫃', icon: 'images/bookcase.png' }, { name: '衣櫃', icon: 'images/wardrobe.png' }, { name: '鞋櫃', icon: 'images/shoecabinet.png' },
+                    { name: '書枱', icon: 'images/desk.png' }
+                ]},
+                'G/F': { hypernym: '食物', items: [
+                    { name: '蘋果', icon: '🍎' }, { name: '梨', icon: '🍐' }, { name: '檸檬', icon: '🍋' }, { name: '香蕉', icon: '🍌' }, 
+                    { name: '西瓜', icon: '🍉' }, { name: '提子', icon: '🍇' }, { name: '士多啤梨', icon: '🍓' }, { name: '藍莓', icon: '🫐' }, 
+                    { name: '蜜瓜', icon: '🍈' }, { name: '車厘子', icon: '🍒' }, { name: '桃', icon: '🍑' }, { name: '芒果', icon: '🥭' }, 
+                    { name: '菠蘿', icon: '🍍' }, { name: '椰子', icon: '🥥' }, { name: '奇異果', icon: '🥝' }, { name: '茄子', icon: '🍆' }, 
+                    { name: '番茄', icon: '🍅' }, { name: '牛油果', icon: '🥑' }, { name: '西蘭花', icon: '🥦' }, { name: '青瓜', icon: '🥒' }, 
+                    { name: '辣椒', icon: '🌶️' }, { name: '菜', icon: '🥬' }, { name: '粟米', icon: '🌽' }, { name: '紅蘿蔔', icon: '🥕' }, 
+                    { name: '蒜頭', icon: '🧄' }, { name: '洋葱', icon: '🧅' }, { name: '薯仔', icon: '🥔' }, { name: '番薯', icon: '🍠' }, 
+                    { name: '薑', icon: '🫚' }, { name: '蛋糕', icon: '🍰' }, { name: '麵包', icon: '🍞' }, { name: '雪糕', icon: '🍦' }, 
+                    { name: '曲奇餅', icon: '🍪' }, { name: '波板糖', icon: '🍭' }, { name: '朱古力', icon: '🍫' }, { name: '罐頭', icon: '🥫' }, { name: '肉', icon: '🥩' }
+                ]}
+            };
+            
+            const allItemObjects = Object.values(storeData).flatMap(floor => floor.items);
+            const itemMap = new Map(allItemObjects.map(item => [item.name, item]));
+            const allItems = allItemObjects.map(item => item.name);
+            const relatives = ['媽媽', '爸爸', '姐姐', '弟弟', '伯伯', '姨姨', '小狗', '小貓'];
+            const relativeIcons = {
+                '媽媽': '👩', '爸爸': '👨', '姐姐': '👧', '弟弟': '👦', '伯伯': '👨‍💼', '姨姨': '👩‍💼', '小狗': '🐶', '小貓': '🐱'
+            };
+
+            // --- Game State ---
+            let gameState = {
+                difficulty: 'easy',
+                currentRound: 1,
+                score: 0,
+                activeFloor: 'G/F',
+                shoppingList: [],
+                itemsInCart: [],
+                wrongItemsFound: [],
+                misplacedItemsOnFloors: {}
+            };
+
+            // --- Functions ---
+            function startGame(difficulty) {
+                // Initialize Tone.js on user interaction
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+                setupSounds();
+
+                gameState.difficulty = difficulty;
+                gameState.currentRound = 1;
+                gameState.score = 0;
+                updateScore(0);
+                startScreen.classList.add('hidden');
+                endScreen.classList.add('hidden');
+                mainGame.classList.remove('hidden');
+
+                if (difficulty === 'difficult') {
+                    wrongItemsSection.classList.remove('hidden');
+                } else {
+                    wrongItemsSection.classList.add('hidden');
+                }
+
+                setupRound();
+            }
+
+            function setupRound() {
+                updateRoundDisplay();
+                gameState.shoppingList = [];
+                gameState.itemsInCart = [];
+                gameState.wrongItemsFound = [];
+                gameState.misplacedItemsOnFloors = {};
+
+                // Generate shopping list
+                const listOwner = relatives[gameState.currentRound - 1];
+                listOwnerEl.textContent = `${listOwner} 的清單：`;
+                const listSize = gameState.difficulty === 'difficult' ? 3 : (Math.random() < 0.7 ? 2 : 3); // 3 items for difficult, 2-3 for easy
+                const availableItems = [...allItems];
+                for (let i = 0; i < listSize; i++) {
+                    const randomIndex = Math.floor(Math.random() * availableItems.length);
+                    gameState.shoppingList.push(availableItems.splice(randomIndex, 1)[0]);
+                }
+
+                // Generate 4 misplaced items for difficult mode on random floors
+                if (gameState.difficulty === 'difficult') {
+                    const allFloorKeys = Object.keys(storeData);
+                    // Shuffle floors to pick 4 random ones
+                    for (let i = allFloorKeys.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [allFloorKeys[i], allFloorKeys[j]] = [allFloorKeys[j], allFloorKeys[i]];
+                    }
+                    const floorsToMuddle = allFloorKeys.slice(0, 4); // Select 4 floors
+
+                    floorsToMuddle.forEach(floorKey => {
+                        const floorItems = storeData[floorKey].items;
+                        const otherItems = allItemObjects.filter(itemObj => !floorItems.some(floorItem => floorItem.name === itemObj.name));
+                        const wrongItem = otherItems[Math.floor(Math.random() * otherItems.length)];
+                        gameState.misplacedItemsOnFloors[floorKey] = wrongItem;
+                    });
+                }
+                
+                renderElevator();
+                changeFloor('G/F');
+                updateCart();
+            }
+            
+            function renderElevator() {
+                elevatorButtonsContainer.innerHTML = '';
+                const floors = Object.keys(storeData).reverse(); // 5/F on top
+                floors.forEach(floorKey => {
+                    const floorData = storeData[floorKey];
+                    const button = document.createElement('button');
+                    // Changed padding and removed overall text-lg to allow for two lines with different sizes
+                    button.className = `elevator-button w-full text-center p-2 rounded-lg font-semibold transition-colors duration-200 bg-gray-200 hover:bg-amber-400`;
+                    
+                    // Using innerHTML to structure the button content with floor and category name
+                    button.innerHTML = `
+                        <span class="block text-lg">${floorKey}</span>
+                        <span class="block text-sm">${floorData.hypernym}</span>
+                    `;
+                    
+                    if (floorKey === gameState.activeFloor) {
+                        button.classList.add('active');
+                    }
+                    button.addEventListener('click', () => changeFloor(floorKey));
+                    elevatorButtonsContainer.appendChild(button);
+                });
+            }
+
+            function changeFloor(floorKey) {
+                gameState.activeFloor = floorKey;
+                renderElevator(); // To update active button
+                renderFloor(floorKey);
+            }
+
+            function renderFloor(floorKey) {
+                const floorData = storeData[floorKey];
+                let itemsToDisplay = [...floorData.items];
+                
+                if (gameState.difficulty === 'difficult' && gameState.misplacedItemsOnFloors[floorKey]) {
+                    const wrongItem = gameState.misplacedItemsOnFloors[floorKey];
+                    
+                    // Find items on this floor that are NOT on the shopping list
+                    const replaceableItems = itemsToDisplay.filter(item => !gameState.shoppingList.includes(item.name));
+
+                    if (replaceableItems.length > 0) {
+                        // Pick a random non-shopping-list item to replace
+                        const itemToReplace = replaceableItems[Math.floor(Math.random() * replaceableItems.length)];
+                        const indexToReplace = itemsToDisplay.findIndex(item => item.name === itemToReplace.name);
+                        
+                        // Replace it with the misplaced item
+                        if (indexToReplace !== -1) {
+                            itemsToDisplay[indexToReplace] = wrongItem;
+                        }
+                    } else {
+                        // Fallback for the rare edge case where all items on a floor are on the shopping list
+                        const randomIndex = Math.floor(Math.random() * itemsToDisplay.length);
+                        itemsToDisplay[randomIndex] = wrongItem;
+                    }
+                }
+
+                // Shuffle items for variety
+                itemsToDisplay.sort(() => Math.random() - 0.5);
+
+                departmentFloor.innerHTML = `
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-3xl font-bold text-amber-800">${floorKey} - ${floorData.hypernym}</h2>
+                    </div>
+                    <div id="shelves" class="space-y-8"></div>
+                `;
+
+                const shelvesContainer = document.getElementById('shelves');
+                const itemsPerShelf = window.innerWidth < 768 ? 3 : 5; // Fewer items per shelf on mobile
+                let shelfCount = 0;
+
+                for (let i = 0; i < itemsToDisplay.length; i += itemsPerShelf) {
+                    shelfCount++;
+                    const shelfItems = itemsToDisplay.slice(i, i + itemsPerShelf);
+                    
+                    const shelfWrapper = document.createElement('div');
+                    shelfWrapper.className = 'shelf-wrapper';
+
+                    const itemsDiv = document.createElement('div');
+                    itemsDiv.className = 'grid gap-2 sm:gap-4 justify-items-center';
+                    itemsDiv.style.gridTemplateColumns = `repeat(${shelfItems.length}, minmax(0, 1fr))`;
+
+                    shelfItems.forEach(item => {
+                        const isCollected = gameState.itemsInCart.includes(item.name) || gameState.wrongItemsFound.includes(item.name);
+                        const card = document.createElement('div');
+                        card.className = `item-card cursor-pointer bg-white rounded-lg p-2 text-center border-2 border-transparent ${isCollected ? 'selected' : ''}`;
+                        card.dataset.item = item.name;
+                        
+                        const isImagePath = item.icon.includes('/');
+                        let iconHTML;
+
+                        if (isImagePath) {
+                            // The image will be contained within the parent div. max-w/h and object-contain are key.
+                            iconHTML = `<img src="${item.icon}" alt="${item.name}" class="max-w-full max-h-full object-contain">`;
+                        } else {
+                            // Emoji size is controlled by font-size.
+                            iconHTML = `<span class="text-5xl sm:text-6xl">${item.icon}</span>`;
+                        }
+                        
+                        // KEY CHANGE: The container now has a fixed but responsive width and height (w-24, h-24).
+                        // This forces every icon box to be the same size. 'mx-auto' centers it within the grid cell.
+                        const iconContainerHTML = `
+                            <div class="bg-gray-100 rounded-md flex items-center justify-center aspect-square w-24 h-24 mx-auto p-2">
+                                ${iconHTML}
+                            </div>`;
+
+                        card.innerHTML = `
+                            ${iconContainerHTML}
+                            <p class="mt-2 text-sm sm:text-base font-medium text-gray-700">${item.name}</p>
+                        `;
+
+                        card.addEventListener('click', () => handleItemClick(item.name, card));
+                        itemsDiv.appendChild(card);
+                    });
+                    
+                    shelfWrapper.appendChild(itemsDiv);
+
+                    const shelfDiv = document.createElement('div');
+                    shelfDiv.className = 'shelf h-5 mt-1';
+                    shelfWrapper.appendChild(shelfDiv);
+
+                    shelvesContainer.appendChild(shelfWrapper);
+                }
+            }
+            
+            function handleItemClick(itemName, cardElement) {
+                if (cardElement.classList.contains('selected')) return; // Already collected
+
+                const isOnShoppingList = gameState.shoppingList.includes(itemName);
+                const isMisplaced = gameState.difficulty === 'difficult' && Object.values(gameState.misplacedItemsOnFloors).some(itemObj => itemObj.name === itemName);
+                const isCorrectOnThisFloor = storeData[gameState.activeFloor].items.some(item => item.name === itemName);
+
+                if (gameState.difficulty === 'easy') {
+                    if (isOnShoppingList) {
+                        gameState.itemsInCart.push(itemName);
+                        updateScore(10);
+                        playCorrectSound();
+                        cardElement.classList.add('selected');
+                    } else {
+                        // Optional: give feedback for clicking wrong item
+                        playWrongSound();
+                    }
+                } else { // Difficult mode
+                    if (isOnShoppingList && isCorrectOnThisFloor) {
+                        gameState.itemsInCart.push(itemName);
+                        updateScore(10);
+                        playCorrectSound();
+                        cardElement.classList.add('selected');
+                    } else if (isMisplaced && !isCorrectOnThisFloor) {
+                        gameState.wrongItemsFound.push(itemName);
+                        updateScore(15); // More points for finding wrong items
+                        playCorrectSound();
+                        cardElement.classList.add('selected');
+                        showStaffApology();
+                    } else {
+                         updateScore(-5); // Penalty
+                         playWrongSound();
+                    }
+                }
+
+                updateCart();
+                checkRoundCompletion();
+            }
+
+            function updateCart() {
+                const listOwner = relatives[gameState.currentRound - 1];
+                const ownerIcon = relativeIcons[listOwner];
+
+                // Update shopping list display with checkmarks
+                listOwnerEl.innerHTML = `<span class="text-2xl">${ownerIcon}</span> ${listOwner} 的清單： <span class="font-normal">${gameState.shoppingList.map(item => `<span class="${gameState.itemsInCart.includes(item) ? 'text-green-500 line-through' : ''}">${item}</span>`).join('、')}</span>`;
+                
+                // Update cart items
+                if (gameState.itemsInCart.length === 0) {
+                    shoppingCartEl.innerHTML = '<p class="text-gray-500 text-center italic">購物車是空的</p>';
+                } else {
+                    shoppingCartEl.innerHTML = gameState.itemsInCart.map(item => {
+                        const itemData = itemMap.get(item);
+                        const isImagePath = itemData.icon.includes('/');
+                        const iconContent = isImagePath
+                            ? `<img src="${itemData.icon}" alt="${itemData.name}" class="w-6 h-6 object-contain">`
+                            : `<span class="text-2xl">${itemData.icon}</span>`;
+                        return `<div class="bg-green-100 text-green-800 p-2 rounded-md flex items-center justify-center gap-2">${iconContent}<span>${itemData.name}</span></div>`
+                    }).join('');
+                }
+
+                // Update wrong items found
+                if (gameState.difficulty === 'difficult') {
+                    if (gameState.wrongItemsFound.length === 0) {
+                        wrongItemsCartEl.innerHTML = '<p class="text-gray-500 text-center italic">還未找到</p>';
+                    } else {
+                        wrongItemsCartEl.innerHTML = gameState.wrongItemsFound.map(item => {
+                            const itemData = itemMap.get(item);
+                             const isImagePath = itemData.icon.includes('/');
+                            const iconContent = isImagePath
+                                ? `<img src="${itemData.icon}" alt="${itemData.name}" class="w-6 h-6 object-contain">`
+                                : `<span class="text-2xl">${itemData.icon}</span>`;
+                            return `<div class="bg-red-100 text-red-800 p-2 rounded-md flex items-center justify-center gap-2">${iconContent}<span>${itemData.name}</span></div>`
+                        }).join('');
+                    }
+                }
+            }
+
+            function updateScore(change) {
+                gameState.score += change;
+                if (gameState.score < 0) gameState.score = 0;
+                scoreEl.textContent = gameState.score;
+                scoreEl.classList.add('score-pop');
+                setTimeout(() => scoreEl.classList.remove('score-pop'), 300);
+            }
+
+            function updateRoundDisplay() {
+                 roundEl.textContent = `${gameState.currentRound} / 8`;
+            }
+
+            function checkRoundCompletion() {
+                let roundComplete = false;
+                if (gameState.difficulty === 'easy') {
+                    if (gameState.shoppingList.every(item => gameState.itemsInCart.includes(item))) {
+                        roundComplete = true;
+                    }
+                } else { // Difficult
+                    const allShoppingItemsFound = gameState.shoppingList.every(item => gameState.itemsInCart.includes(item));
+                    const allMisplacedItemsFound = Object.values(gameState.misplacedItemsOnFloors).every(item => gameState.wrongItemsFound.includes(item));
+                    if (allShoppingItemsFound && allMisplacedItemsFound) {
+                        roundComplete = true;
+                    }
+                }
+                
+                if (roundComplete) {
+                    playWinSound();
+                    updateScore(20); // Bonus for completing a round
+                    // Add a slight delay to ensure the staff apology modal has time to disappear if it was the last item
+                    setTimeout(() => {
+                        showSuccessModal();
+                    }, 500);
+                }
+            }
+
+            function showSuccessModal() {
+                if (gameState.currentRound === 8) {
+                    successMessageEl.textContent = "任務完成！";
+                    nextRoundBtn.textContent = "查看結果";
+                } else {
+                    successMessageEl.textContent = "做得好！";
+                    nextRoundBtn.textContent = "下一回合";
+                }
+                successModal.classList.remove('hidden');
+            }
+
+            function showStaffApology() {
+                staffApologyModal.classList.remove('hidden');
+                setTimeout(() => {
+                    staffApologyModal.classList.add('hidden');
+                }, 1500); // The modal will disappear after 1.5 seconds
+            }
+            
+            function nextRound() {
+                successModal.classList.add('hidden');
+                if (gameState.currentRound < 8) {
+                    gameState.currentRound++;
+                    setupRound();
+                } else {
+                    showEndScreen();
+                }
+            }
+
+            function showEndScreen() {
+                mainGame.classList.add('hidden');
+                finalScoreEl.textContent = gameState.score;
+                endScreen.classList.remove('hidden');
+            }
+
+            function resetGame() {
+                endScreen.classList.add('hidden');
+                startScreen.classList.remove('hidden');
+            }
+            
+            // --- Event Listeners ---
+            startEasyBtn.addEventListener('click', () => startGame('easy'));
+            startDifficultBtn.addEventListener('click', () => startGame('difficult'));
+            restartGameBtn.addEventListener('click', resetGame);
+            nextRoundBtn.addEventListener('click', nextRound);
+            
+             // Responsive layout adjustment
+            window.addEventListener('resize', () => {
+                if (!mainGame.classList.contains('hidden')) {
+                    renderFloor(gameState.activeFloor);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+
+
+
+
+
